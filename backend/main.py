@@ -173,19 +173,26 @@ if os.path.isdir(FRONTEND_DIR):
     from fastapi.responses import FileResponse
     import mimetypes
 
-    # 确保 MIME 类型正确（尤其是 .js 和 .css）
     mimetypes.add_type("text/javascript", ".js")
     mimetypes.add_type("text/css", ".css")
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
+        # 处理 /guide/* 和 /uploads/* 静态文件（由后端服务，不走 SPA）
+        for prefix, base_dir in [("guide", GUIDE_DIR), ("uploads", UPLOAD_DIR)]:
+            if full_path == prefix or full_path.startswith(prefix + "/"):
+                rel = full_path[len(prefix):].lstrip("/")
+                f = os.path.join(base_dir, rel) if rel else os.path.join(base_dir, "guide.md")
+                if os.path.isfile(f) and os.path.realpath(f).startswith(os.path.realpath(base_dir)):
+                    return FileResponse(f)
+                raise HTTPException(404)
+
+        # 前端静态文件 + SPA 回退
         file_path = os.path.join(FRONTEND_DIR, full_path)
-        # 安全防护：防止目录穿越攻击
         if not os.path.realpath(file_path).startswith(os.path.realpath(FRONTEND_DIR)):
             raise HTTPException(404)
         if full_path and os.path.isfile(file_path):
             return FileResponse(file_path)
-        # SPA 回退：所有非文件路径返回 index.html
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
 if __name__ == "__main__":
