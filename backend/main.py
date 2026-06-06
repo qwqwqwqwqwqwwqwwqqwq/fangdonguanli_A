@@ -41,10 +41,8 @@ os.makedirs(GUIDE_DIR, exist_ok=True)
 
 async def verify_api_key(request: Request):
     path = request.url.path
-    if path in SKIP_AUTH_PATHS or path.startswith("/uploads") or path.startswith("/guide"):
-        return
-    # 静态文件 /assets/* /icons/* /manifest.json /sw.js
-    if path.startswith("/assets/") or path.startswith("/icons/") or path in {"/manifest.json", "/sw.js", "/favicon.ico", "/"}:
+    # 只对 /api/* 路径验证 API Key，其余路径放行
+    if not path.startswith("/api/"):
         return
     key = request.headers.get("X-API-Key")
     if key != API_KEY:
