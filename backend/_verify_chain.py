@@ -1,11 +1,12 @@
 """End-to-end business chain verification test."""
 import sys
 sys.path.insert(0, '.')
-import requests, json
+import os, requests, json
 from datetime import date
 
-API = "http://127.0.0.1:8005/api"
-H = {"X-API-Key": "dev-key-change-me", "Content-Type": "application/json"}
+API = os.getenv("API_URL", "http://127.0.0.1:8005/api")
+API_KEY = os.getenv("API_KEY", "dev-key-change-me")
+H = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
 TODAY = date.today().isoformat()  # e.g. 2026-05-29
 
 def step(name, method, url, **kwargs):

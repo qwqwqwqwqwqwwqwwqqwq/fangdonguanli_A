@@ -17,6 +17,7 @@ from database import init_db, UPLOAD_DIR, get_db, DB_PATH
 from services.constants import beijing_today_str
 from models.orm import Contract, Bill, Property, Tenant, PaymentAllocation
 
+# 默认 API Key 仅用于本地开发；生产环境务必通过环境变量 API_KEY 覆盖
 API_KEY = os.getenv("API_KEY", "dev-key-change-me")
 
 ALLOWED_ORIGINS = [

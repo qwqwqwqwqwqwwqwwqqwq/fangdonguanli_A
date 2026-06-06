@@ -14,8 +14,9 @@
 | 数据库 | SQLite (WAL mode) | - |
 | 前端框架 | Vue 3 + TypeScript strict | 3.4+ |
 | 状态管理 | Pinia | - |
-| UI 组件库 | Vant | 4.x |
-| 构建工具 | Vite | - |
+| UI 组件库 | Vant (移动端优先) | 4.x |
+| 构建工具 | Vite + Capacitor (Android APK) | - |
+| 云部署 | Render.com (免费) | - |
 
 ## 文档导航
 
@@ -136,8 +137,30 @@ python audit_test.py             # 业务流程审计测试
 4. **软删除结算**: 退租后合同标记为"已结算-已退租"保留历史，租客归档 5 个月后自动清理
 5. **电费自动计算**: 单价 1.2 元/度，抄表→自动更新账单，退房→自动扣款
 
+## 部署方式
+
+| 方式 | 说明 |
+|------|------|
+| **Android App** | 构建 APK 安装到手机，后端部署到 Render.com 云端 |
+| **PWA（浏览器）** | Chrome 打开 → 添加到主屏幕，全屏运行 |
+| **本地开发** | `start.bat` 启动前后端，localhost 访问 |
+
+### Android APK 构建
+
+```bash
+cd frontend
+# 1. 修改 .env.production 中的 VITE_API_BASE 为云端地址
+# 2. 构建前端
+npm run build
+# 3. 同步到 Android 项目
+npx cap sync android
+# 4. 用 Android Studio 打开 android/ 目录 → Build → Build APK
+```
+
+详见 [android-deployment.md](android-deployment.md)
+
 ## 已知限制
 
 - 当前数据库为 SQLite 单文件，高并发场景建议迁移至 PostgreSQL
-- 前端 API Key 硬编码在 `src/api/index.ts` 中，生产环境需改为环境变量 + 服务端 Session
-- 文件上传存储在本地 `uploads/` 目录，集群部署需改用对象存储
+- 文件上传存储在持久化磁盘 `/data/uploads/`，Render 免费额度 1GB
+- API Key 通过 `VITE_API_KEY` 环境变量注入前端构建，生产环境务必更换
