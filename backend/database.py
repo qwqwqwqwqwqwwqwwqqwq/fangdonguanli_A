@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from fastapi import HTTPException, UploadFile
 from datetime import datetime, timezone, timedelta
 import os
+import shutil
 
 # 北京时间 UTC+8，不受服务器时区影响
 BEIJING_TZ = timezone(timedelta(hours=8))
@@ -50,7 +51,6 @@ def safe_write_upload(rel_path: str, file: UploadFile) -> str:
     abs_path = os.path.join(UPLOAD_DIR, rel_path)
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
     with open(abs_path, "wb") as f:
-        import shutil
         shutil.copyfileobj(file.file, f)
     return abs_path
 

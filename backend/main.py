@@ -1,7 +1,7 @@
 """
 房东管理系统 — FastAPI 入口。
 """
-from fastapi import FastAPI, Depends, Request, HTTPException, UploadFile, File
+from fastapi import FastAPI, Depends, Request, HTTPException, UploadFile, File, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,7 +15,7 @@ import io
 
 from database import init_db, UPLOAD_DIR, get_db, DB_PATH
 from services.constants import beijing_today_str
-from models.orm import Contract, Bill, Property, Tenant, PaymentAllocation
+from models.orm import Contract, Bill, Property, PaymentAllocation
 
 # 默认 API Key 仅用于本地开发；生产环境务必通过环境变量 API_KEY 覆盖
 API_KEY = os.getenv("API_KEY", "dev-key-change-me")
@@ -23,30 +23,29 @@ API_KEY = os.getenv("API_KEY", "dev-key-change-me")
 ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:3001",
-    "http://localhost:5173",  # Vite 开发服务器
+    "http://localhost:5173",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:3001",
     "http://127.0.0.1:5173",
-    # Capacitor APK (WebView 的 origin 是 capacitor://localhost)
     "capacitor://localhost",
-    # 生产环境额外域名通过环境变量添加，逗号分隔
     *([o.strip() for o in os.getenv("EXTRA_ORIGINS", "").split(",") if o.strip()]),
 ]
 
-SKIP_AUTH_PATHS = {"/api/health", "/docs", "/openapi.json", "/redoc"}
-GUIDE_DIR = os.path.join(os.path.dirname(__file__), "static")
-FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "static-frontend")
+# 预计算目录真实路径（避免每个请求重复调用 realpath）
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+GUIDE_DIR = os.path.join(BASE_DIR, "static")
+FRONTEND_DIR = os.path.join(BASE_DIR, "static-frontend")
+REAL_UPLOAD_DIR = os.path.realpath(UPLOAD_DIR)
+REAL_GUIDE_DIR = os.path.realpath(GUIDE_DIR)
+REAL_FRONTEND_DIR = os.path.realpath(FRONTEND_DIR)
 os.makedirs(GUIDE_DIR, exist_ok=True)
 
 
 async def verify_api_key(request: Request):
-    path = request.url.path
-    # 只对 /api/* 路径验证 API Key，其余路径放行
-    if not path.startswith("/api/"):
-        return
-    key = request.headers.get("X-API-Key")
-    if key != API_KEY:
+    """API 路由专用认证依赖。"""
+    if request.headers.get("X-API-Key") != API_KEY:
         raise HTTPException(401, "无效的 API Key")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -54,7 +53,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="房东管理系统 API", version="2.0.0", lifespan=lifespan, dependencies=[Depends(verify_api_key)])
+app = FastAPI(title="房东管理系统 API", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,38 +62,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
-app.mount("/guide", StaticFiles(directory=GUIDE_DIR), name="guide")
 
-# 路由注册 — Phase 1
-from routes.properties import router as properties_router
-from routes.tenants import router as tenants_router
-from routes.contracts import router as contracts_router
+# ── API Router（带认证，health 除外） ──
+api_router = APIRouter(dependencies=[Depends(verify_api_key)])
 
-app.include_router(properties_router, prefix="/api/properties", tags=["房产管理"])
-app.include_router(tenants_router, prefix="/api/tenants", tags=["租客管理"])
-app.include_router(contracts_router, prefix="/api/contracts", tags=["合同管理"])
-
-# 路由注册 — Phase 2
-from routes.inspections import router as inspections_router
-from routes.meter_readings import router as meter_readings_router
-from routes.bills import router as bills_router
-from routes.payments import router as payments_router
-from routes.settlements import router as settlements_router
-
-app.include_router(inspections_router, prefix="/api/inspections", tags=["验收管理"])
-app.include_router(meter_readings_router, prefix="/api/meter-readings", tags=["电表记录"])
-app.include_router(bills_router, prefix="/api/bills", tags=["账单管理"])
-app.include_router(payments_router, prefix="/api/payments", tags=["收款管理"])
-app.include_router(settlements_router, prefix="/api/settlements", tags=["结算单"])
-
-
-@app.get("/api/health")
+@api_router.get("/health")
 def health():
     return {"status": "ok"}
 
-
-@app.get("/api/dashboard")
+@api_router.get("/dashboard")
 def dashboard(db=Depends(get_db)):
     result = db.execute(
         select(func.count(Contract.id), Contract.status)
@@ -109,7 +85,6 @@ def dashboard(db=Depends(get_db)):
     vacant = db.scalar(
         select(func.count(Property.id)).where(Property.status == "空闲")
     ) or 0
-    # 待收租金 = 所有未付/部分付账单的剩余金额
     pending_bills = list(db.scalars(select(Bill).where(Bill.status.in_(("未付", "部分付")))))
     pending_rent = 0
     if pending_bills:
@@ -129,24 +104,20 @@ def dashboard(db=Depends(get_db)):
         "pending_contract_ids": pending_contract_ids,
     }
 
-
-@app.get("/api/backup")
+@api_router.get("/backup")
 def backup(db=Depends(get_db)):
     """一键备份数据库到 backup/ 目录。"""
-    import os as _os
-    backup_dir = _os.path.join(_os.path.dirname(DB_PATH), "backup")
-    _os.makedirs(backup_dir, exist_ok=True)
+    backup_dir = os.path.join(os.path.dirname(DB_PATH), "backup")
+    os.makedirs(backup_dir, exist_ok=True)
     timestamp = date.today().strftime("%Y%m%d")
-    backup_path = _os.path.join(backup_dir, f"landlord_{timestamp}.db")
-    # 强制 checkpoint 后复制
+    backup_path = os.path.join(backup_dir, f"landlord_{timestamp}.db")
     db.execute(select(1))
     db.commit()
     shutil.copy2(DB_PATH, backup_path)
-    existing = sorted([f for f in _os.listdir(backup_dir) if f.endswith(".db")])
+    existing = sorted([f for f in os.listdir(backup_dir) if f.endswith(".db")])
     return {"message": f"备份完成", "path": backup_path, "backups": existing}
 
-
-@app.get("/api/backup/excel")
+@api_router.get("/backup/excel")
 def backup_excel(db=Depends(get_db)):
     """导出全部数据为 Excel 文件。"""
     from services.excel_service import export_to_excel
@@ -158,8 +129,7 @@ def backup_excel(db=Depends(get_db)):
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
-
-@app.post("/api/backup/restore")
+@api_router.post("/backup/restore")
 async def backup_restore(file: UploadFile = File(...), db=Depends(get_db)):
     """从 Excel 文件恢复数据（清空后导入）。"""
     from services.excel_service import import_from_excel
@@ -167,33 +137,34 @@ async def backup_restore(file: UploadFile = File(...), db=Depends(get_db)):
     stats = import_from_excel(db, content)
     return {"message": f"已导入 {stats['_total']} 条记录", "tables": stats}
 
+# 注册领域路由到 API Router
+from routes.properties import router as properties_router
+from routes.tenants import router as tenants_router
+from routes.contracts import router as contracts_router
+from routes.inspections import router as inspections_router
+from routes.meter_readings import router as meter_readings_router
+from routes.bills import router as bills_router
+from routes.payments import router as payments_router
+from routes.settlements import router as settlements_router
 
-# 前端静态文件 — SPA 路由（API 路由优先，其余返回 index.html）
+api_router.include_router(properties_router, prefix="/properties", tags=["房产管理"])
+api_router.include_router(tenants_router, prefix="/tenants", tags=["租客管理"])
+api_router.include_router(contracts_router, prefix="/contracts", tags=["合同管理"])
+api_router.include_router(inspections_router, prefix="/inspections", tags=["验收管理"])
+api_router.include_router(meter_readings_router, prefix="/meter-readings", tags=["电表记录"])
+api_router.include_router(bills_router, prefix="/bills", tags=["账单管理"])
+api_router.include_router(payments_router, prefix="/payments", tags=["收款管理"])
+api_router.include_router(settlements_router, prefix="/settlements", tags=["结算单"])
+
+app.include_router(api_router, prefix="/api")
+
+# ── 静态文件挂载（按优先级：具体路径在前，SPA 兜底在最后） ──
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+app.mount("/guide", StaticFiles(directory=GUIDE_DIR), name="guide")
+
 if os.path.isdir(FRONTEND_DIR):
-    from fastapi.responses import FileResponse
-    import mimetypes
-
-    mimetypes.add_type("text/javascript", ".js")
-    mimetypes.add_type("text/css", ".css")
-
-    @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        # 处理 /guide/* 和 /uploads/* 静态文件（由后端服务，不走 SPA）
-        for prefix, base_dir in [("guide", GUIDE_DIR), ("uploads", UPLOAD_DIR)]:
-            if full_path == prefix or full_path.startswith(prefix + "/"):
-                rel = full_path[len(prefix):].lstrip("/")
-                f = os.path.join(base_dir, rel) if rel else os.path.join(base_dir, "guide.md")
-                if os.path.isfile(f) and os.path.realpath(f).startswith(os.path.realpath(base_dir)):
-                    return FileResponse(f)
-                raise HTTPException(404)
-
-        # 前端静态文件 + SPA 回退
-        file_path = os.path.join(FRONTEND_DIR, full_path)
-        if not os.path.realpath(file_path).startswith(os.path.realpath(FRONTEND_DIR)):
-            raise HTTPException(404)
-        if full_path and os.path.isfile(file_path):
-            return FileResponse(file_path)
-        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+    # StaticFiles(html=True) 自动处理 SPA 回退：找不到文件 → 返回 index.html
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="spa")
 
 if __name__ == "__main__":
     import uvicorn
