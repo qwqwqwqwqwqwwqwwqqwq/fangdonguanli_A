@@ -5,9 +5,10 @@ const config: CapacitorConfig = {
   appName: '房东管家',
   webDir: 'dist',
   server: {
-    // 开发时使用本地服务器，打包 APK 时注释掉
-    // url: 'http://192.168.1.100:5173',
-    // cleartext: true,
+    // 热更新：APK 启动时从 GitHub Pages 加载最新前端
+    // git push 代码 → Pages 自动更新 → 手机 App 自动获取最新版
+    url: 'https://qwqwqwqwqwqwwqwwqqwq.github.io/fangdonguanli_A',
+    cleartext: false,
     androidScheme: 'https',
   },
   android: {

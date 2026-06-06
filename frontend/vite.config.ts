@@ -5,6 +5,8 @@ import { VantResolver } from '@vant/auto-import-resolver'
 import { resolve } from 'path'
 
 export default defineConfig({
+  // base: './' 使用相对路径，兼容 GitHub Pages 子目录部署
+  base: './',
   plugins: [
     vue(),
     Components({ resolvers: [VantResolver()] }),
