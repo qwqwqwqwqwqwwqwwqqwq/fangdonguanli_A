@@ -66,7 +66,8 @@ app.add_middleware(
 # ── API Router（带认证，health 除外） ──
 api_router = APIRouter(dependencies=[Depends(verify_api_key)])
 
-@api_router.get("/health")
+# health 是公开端点，注册在主 app 上（不经过 API Router 的认证依赖）
+@app.get("/api/health")
 def health():
     return {"status": "ok"}
 
