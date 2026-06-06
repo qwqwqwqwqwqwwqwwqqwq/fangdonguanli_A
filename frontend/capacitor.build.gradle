@@ -1,0 +1,14 @@
+// Capacitor Android 构建配置提示
+// 此文件不是完整的 build.gradle，仅作参考。
+// 正式使用时运行: npx cap add android 自动生成。
+
+// Android 最低 SDK 版本要求
+ext {
+    minSdkVersion = 22   // Android 5.1
+    targetSdkVersion = 34 // Android 14
+    compileSdkVersion = 34
+}
+
+// 在 AndroidManifest.xml 中配置:
+// <uses-permission android:name="android.permission.INTERNET" />
+// <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
