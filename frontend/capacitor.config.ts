@@ -5,9 +5,9 @@ const config: CapacitorConfig = {
   appName: '房东管家',
   webDir: 'dist',
   server: {
-    // 热更新：APK 启动时从 GitHub Pages 加载最新前端
-    // git push 代码 → Pages 自动更新 → 手机 App 自动获取最新版
-    url: 'https://qwqwqwqwqwqwwqwwqqwq.github.io/fangdonguanli_A',
+    // 热更新：APK 启动时从 Render 云端加载最新前端
+    // Render 在国内能访问，前端后端在同一服务器
+    url: 'https://landlord-api-up06.onrender.com',
     cleartext: false,
     androidScheme: 'https',
   },

@@ -35,11 +35,16 @@ ALLOWED_ORIGINS = [
 
 SKIP_AUTH_PATHS = {"/api/health", "/docs", "/openapi.json", "/redoc"}
 GUIDE_DIR = os.path.join(os.path.dirname(__file__), "static")
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "static-frontend")
 os.makedirs(GUIDE_DIR, exist_ok=True)
 
 
 async def verify_api_key(request: Request):
-    if request.url.path in SKIP_AUTH_PATHS or request.url.path.startswith("/uploads") or request.url.path.startswith("/guide"):
+    path = request.url.path
+    if path in SKIP_AUTH_PATHS or path.startswith("/uploads") or path.startswith("/guide"):
+        return
+    # 静态文件 /assets/* /icons/* /manifest.json /sw.js
+    if path.startswith("/assets/") or path.startswith("/icons/") or path in {"/manifest.json", "/sw.js", "/favicon.ico", "/"}:
         return
     key = request.headers.get("X-API-Key")
     if key != API_KEY:
@@ -164,6 +169,26 @@ async def backup_restore(file: UploadFile = File(...), db=Depends(get_db)):
     stats = import_from_excel(db, content)
     return {"message": f"已导入 {stats['_total']} 条记录", "tables": stats}
 
+
+# 前端静态文件 — SPA 路由（API 路由优先，其余返回 index.html）
+if os.path.isdir(FRONTEND_DIR):
+    from fastapi.responses import FileResponse
+    import mimetypes
+
+    # 确保 MIME 类型正确（尤其是 .js 和 .css）
+    mimetypes.add_type("text/javascript", ".js")
+    mimetypes.add_type("text/css", ".css")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        file_path = os.path.join(FRONTEND_DIR, full_path)
+        # 安全防护：防止目录穿越攻击
+        if not os.path.realpath(file_path).startswith(os.path.realpath(FRONTEND_DIR)):
+            raise HTTPException(404)
+        if full_path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        # SPA 回退：所有非文件路径返回 index.html
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
 if __name__ == "__main__":
     import uvicorn
