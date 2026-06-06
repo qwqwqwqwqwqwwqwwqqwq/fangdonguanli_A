@@ -1,0 +1,42 @@
+name: Deploy to Fly.io
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 构建前端
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+        env:
+          VITE_API_BASE: /api
+          VITE_API_KEY: ${{ secrets.VITE_API_KEY }}
+
+      - name: 复制前端到后端
+        run: |
+          rm -rf backend/static-frontend
+          cp -r frontend/dist backend/static-frontend
+
+      - name: 部署到 Fly.io
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: 执行部署
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
